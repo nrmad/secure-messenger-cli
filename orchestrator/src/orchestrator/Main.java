@@ -78,7 +78,6 @@ public class Main {
                     if (!networks.isEmpty())
                         success = databaseUtilities.updateNetworkAliases(networks);
                 }
-                databaseUtilities.closeConnection();
 
                 printOutcome(success, "update successful..", "update failed, try 'relay --help' for valid syntax or 'relay DISPLAY' for networks");
             } else if (args[0].equals("DISPLAY")) {
@@ -86,7 +85,6 @@ public class Main {
                 // !!! This is capable of throwing an exception here either on failure or a lack of results should probably handle with a try catch
                 networks = databaseUtilities.getAllNetworks();
                 printNetworks(networks);
-                databaseUtilities.closeConnection();
 
 
             } else if (args[0].equals("ADD")) {
@@ -121,7 +119,6 @@ public class Main {
                     }
                 }
                 printOutcome(success, "addition successful..", "addition failed, try 'relay --help' for valid syntax");
-                databaseUtilities.closeConnection();
 
 
             } else if (args[0].equals("DELETE")) {
@@ -146,11 +143,9 @@ public class Main {
                     }
                 }
                 printOutcome(success, "deletion successful..", "deletion failed, try 'relay --help for valid syntax or relay DISPLAY for networks");
-                databaseUtilities.closeConnection();
-
             }
 
-//            databaseUtilities.closeConnection();
+            databaseUtilities.closeConnection();
 
         } catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e) {
             // WILL HANDLE FAILED DELETE

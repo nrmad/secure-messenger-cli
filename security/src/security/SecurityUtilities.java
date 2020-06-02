@@ -55,45 +55,6 @@ public class SecurityUtilities {
         return (KeyStore.PrivateKeyEntry) keystore.getEntry(fingerprint, keyPassword);
     }
 
-    /**
-     * A workaround for not being able select the key entry for the KeyManager
-     * @param keyStore The saved keystore with all the private key entries for each network
-     * @param storePassword the password
-     * @param fingerprint the cert fingerprint
-     * @return the singleton keystore
-     * @throws GeneralSecurityException
-     * @throws IOException
-     */
-    public static KeyStore loadSingleKeystore(KeyStore keyStore, String storePassword, String fingerprint)
-            throws GeneralSecurityException, IOException
-    {
-        KeyStore.ProtectionParameter keyPassword = new KeyStore.PasswordProtection(storePassword.toCharArray());
-        KeyStore.PrivateKeyEntry pke = (KeyStore.PrivateKeyEntry) keyStore.getEntry(fingerprint, keyPassword);
-        KeyStore singleKeystore = KeyStore.getInstance(KEYSTORE_TYPE, PROVIDER);
-        singleKeystore.load(null, null);
-        singleKeystore.setEntry(fingerprint, pke, keyPassword);
-        return singleKeystore;
-    }
-
-    /**
-     * A workaround for not being able to select the certificate entry for the TrustManager
-     * @param truststore the saved truststore with all the trusted certificat entries for each network
-     * @param storePassword the password
-     * @param fingerprint the cert fingerprint
-     * @return the singleton keystore
-     * @throws GeneralSecurityException
-     * @throws IOException
-     */
-    public static KeyStore loadSingleTruststore(KeyStore truststore, String fingerprint)
-        throws GeneralSecurityException, IOException
-    {
-        Certificate cert = truststore.getCertificate(fingerprint);
-        KeyStore singleKeystore = KeyStore.getInstance(KEYSTORE_TYPE, PROVIDER);
-        singleKeystore.load(null, null);
-        singleKeystore.setCertificateEntry(fingerprint, cert);
-        return singleKeystore;
-    }
-
     public static KeyStore loadKeystore(String storePassword)
             throws GeneralSecurityException, IOException
     {
@@ -146,7 +107,7 @@ public class SecurityUtilities {
     }
 
     /**
-     * Delete the entry of the provided network_alias from the provided storeName
+     * Delete the entry of the provided fingerprint from the provided storeName
      * @param storePassword the store password
      * @param fingerprint the network_alias
      * @param storeName the store name
@@ -268,52 +229,6 @@ public class SecurityUtilities {
     }
 
     /**
-     * Generate a V3 X509Certificate for use by the disparate hosts to authenticate to the server
-     * @param caCertificate the Certificate of the CA
-     * @param caPrivateKey the CA private key
-     * @param eePublicKey the requesting parties public key
-     * @param subject the subjects name
-     * @return  the Certificate
-     * @throws GeneralSecurityException
-     * @throws CertIOException
-     * @throws OperatorCreationException
-     */
-    public static X509Certificate makeV3Certificate( X509Certificate caCertificate, PrivateKey caPrivateKey, PublicKey eePublicKey, String subject)
-            throws GeneralSecurityException, CertIOException, OperatorCreationException
-    {
-        X509v3CertificateBuilder v3CertBldr = new JcaX509v3CertificateBuilder(
-                caCertificate.getSubjectX500Principal(),
-                calculateSerialNumber(),
-                calculateDate(0),
-                calculateDate(24 * 365 * 100),
-                new X500Principal("CN=" + subject),
-                eePublicKey);
-
-        JcaX509ExtensionUtils extUtils = new JcaX509ExtensionUtils();
-        v3CertBldr.addExtension(
-                // Identifies the public key certified by this certificate (e.g. where more than one exist to a subject)
-                Extension.subjectKeyIdentifier,
-                false,
-                extUtils.createSubjectKeyIdentifier(eePublicKey));
-        v3CertBldr.addExtension(
-                // Identifies the public key which relates to the signing private key (e.g. more than one exists to issues)
-                Extension.authorityKeyIdentifier,
-                false,
-                extUtils.createAuthorityKeyIdentifier(caCertificate));
-        v3CertBldr.addExtension(
-                // Used in identifying the CA in a cert chain
-                Extension.basicConstraints,
-                true,
-                new BasicConstraints(false));
-
-        JcaContentSignerBuilder signerBuilder = new JcaContentSignerBuilder(SIGNATURE_ALG)
-                .setProvider(PROVIDER);
-
-        return new JcaX509CertificateConverter().setProvider(PROVIDER)
-                .getCertificate(v3CertBldr.build(signerBuilder.build(caPrivateKey)));
-    }
-
-    /**
      * A date utilitiy for calculating how much time in the future a certificate will be valid for
      * @param hoursInFuture the number of hours you want the certificate to be valid for
      * @return the Date of that number of hours in the future from the current time
@@ -333,51 +248,5 @@ public class SecurityUtilities {
         return BigInteger.valueOf(serialNumberBase++);
     }
 
-    /**
-     * produce a salt value for use in password hashing
-     * @return salt
-     * @throws NoSuchAlgorithmException missing boi
-     */
-    private static byte[] getSalt()
-            throws NoSuchAlgorithmException
-    {
-        SecureRandom secureRandom = SecureRandom.getInstance(SECURE_RANDOM_ALG);
-        byte[] salt = new byte[64];
-        secureRandom.nextBytes(salt);
-        return salt;
-    }
-
-    /**
-     * Performs a hash + salt operation on the user provided password
-     * @param password the user provided password
-     * @return the hashed and salted password
-     * @throws NoSuchAlgorithmException
-     * @throws InvalidKeySpecException
-     */
-    static String getAuthennticationHash(String password)
-            throws  NoSuchAlgorithmException, InvalidKeySpecException
-    {
-        return getAuthenticationHash(password,  NUM_ITERATIONS);
-    }
-
-
-    static String getAuthenticationHash(String password, int iterations)
-            throws  NoSuchAlgorithmException, InvalidKeySpecException
-    {
-        byte[] salt = getSalt();
-        char[] chars = password.toCharArray();
-
-        PBEKeySpec spec = new PBEKeySpec(chars, salt, iterations, 512);
-        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(AUTH_HASH_DIGEST_ALG);
-        byte[] hashWithSalt = secretKeyFactory.generateSecret(spec).getEncoded();
-
-        String authHash= Base64.getEncoder().encodeToString(hashWithSalt);
-        authHash += ":";
-        authHash += Base64.getEncoder().encodeToString(salt);
-        authHash += ":";
-        authHash += Integer.toString(iterations);
-
-        return authHash;
-    }
 
 }
