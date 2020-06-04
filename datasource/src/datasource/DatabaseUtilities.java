@@ -13,15 +13,14 @@ public class DatabaseUtilities {
 
     private Pattern aliasPattern = Pattern.compile("\\w{1,255}");
     private static boolean setupComplete = false;
+    private int reg_default_nid;
+    private String reg_default_alias;
 
     private static final String DB_NAME = "secure_messenger_relay";
     private static final String CONNECTION_STRING = "jdbc:mysql://localhost:3306/?useSSL=false";
 
     private static final String CREATE_DB = "CREATE DATABASE IF NOT EXISTS " + DB_NAME;
     private static final String USE_DB = "USE " + DB_NAME;
-    private static final String REG_NETWORK_ALIAS = "REGISTRATION";
-    private static final int REG_DEFAULT_PORT = 2048;
-    private static final int REG_DEFAULT_NID = 1;
 
     private static final String CREATE_CONTACTS = "CREATE TABLE IF NOT EXISTS contacts(cid CHAR(88) PRIMARY KEY, alias VARCHAR(255) NOT NULL)";
     private static final String CREATE_NETWORKS = "CREATE TABLE IF NOT EXISTS networks(nid INTEGER PRIMARY KEY, fingerprint CHAR(88) UNIQUE NOT NULL," +
@@ -31,7 +30,7 @@ public class DatabaseUtilities {
             "FOREIGN KEY(nid) REFERENCES networks(nid), FOREIGN KEY(cid) REFERENCES contacts(cid))";
     private static final String CREATE_CHATROOM_CONTACTS = "CREATE TABLE IF NOT EXISTS chatroomContacts( rid INTEGER, cid CHAR(88), PRIMARY KEY(rid,cid), " +
             "FOREIGN KEY(rid) REFERENCES chatrooms(rid), FOREIGN KEY(cid) REFERENCES contacts(cid))";
-    private static final String CHECK_REGISTER_EXISTS = "SELECT IF(EXISTS(SELECT * FROM networks WHERE nid = "+ REG_DEFAULT_NID +" AND network_alias = '"+REG_NETWORK_ALIAS+"'), 1, 0)";
+    private static final String CHECK_REGISTER_EXISTS = "SELECT IF(EXISTS(SELECT * FROM networks WHERE nid = ? AND network_alias = ?), 1, 0)";
 
     private static final String UPDATE_NETWORK_PORTS = "UPDATE networks SET port = ? WHERE nid = ?";
     private static final String UPDATE_NETWORK_ALIASES = "UPDATE networks SET network_alias = ? WHERE nid = ?";
@@ -46,6 +45,7 @@ public class DatabaseUtilities {
 
     private static final String RETRIEVE_MAX_NID = "SELECT COALESCE(MAX(nid), 0) FROM networks";
 
+    private static PreparedStatement queryCheckRegisterExists;
     private static PreparedStatement queryUpdateNetworkPorts;
     private static PreparedStatement queryUpdateNetworkAliases;
     private static PreparedStatement queryUpdateNetworks;
@@ -94,6 +94,7 @@ public class DatabaseUtilities {
      */
     private void setupPreparedStatements() throws SQLException {
 
+        queryCheckRegisterExists = conn.prepareStatement(CHECK_REGISTER_EXISTS);
         queryUpdateNetworkPorts = conn.prepareStatement(UPDATE_NETWORK_PORTS);
         queryUpdateNetworkAliases = conn.prepareStatement(UPDATE_NETWORK_ALIASES);
         queryUpdateNetworks = conn.prepareStatement(UPDATE_NETWORKS);
@@ -148,6 +149,9 @@ public class DatabaseUtilities {
     public void closeConnection() {
 
         try {
+            if(queryCheckRegisterExists != null){
+                queryCheckRegisterExists.close();
+            }
             if(queryUpdateNetworkPorts != null){
                 queryUpdateNetworkPorts.close();
             }
@@ -190,10 +194,15 @@ public class DatabaseUtilities {
      * @return whether or not the record is set as boolean
      * @throws SQLException
      */
-    public static boolean containsRegister() throws SQLException{
+    public static boolean containsRegister(int reg_default_nid, String reg_default_alias) throws SQLException{
 
-        Statement statement = conn.createStatement();
-        ResultSet resultSet = statement.executeQuery(CHECK_REGISTER_EXISTS);
+        databaseUtilities.reg_default_nid = reg_default_nid;
+        databaseUtilities.reg_default_alias = reg_default_alias;
+
+        queryCheckRegisterExists.clearParameters();
+        queryCheckRegisterExists.setInt(1,reg_default_nid);
+        queryCheckRegisterExists.setString(2, reg_default_alias);
+        ResultSet resultSet = queryCheckRegisterExists.executeQuery();
         resultSet.next();
         if(resultSet.getInt(1) == 1){
             setupComplete = true;
@@ -209,13 +218,13 @@ public class DatabaseUtilities {
      * @param fingerprint the fingerprint of the newly created register certificate
      * @throws SQLException
      */
-    public static void initRegister(String fingerprint) throws SQLException{
+    public static void initRegister(String fingerprint, int reg_default_port) throws SQLException{
 
         queryInsertNetworks.clearParameters();
         queryInsertNetworks.setInt(1, networkCounter++);
         queryInsertNetworks.setString(2, fingerprint);
-        queryInsertNetworks.setInt(3, REG_DEFAULT_PORT);
-        queryInsertNetworks.setString(4, REG_NETWORK_ALIAS);
+        queryInsertNetworks.setInt(3, reg_default_port);
+        queryInsertNetworks.setString(4, databaseUtilities.reg_default_alias);
         int count = queryInsertNetworks.executeUpdate();
         if(count == 0)
             throw new SQLException();
@@ -274,8 +283,8 @@ public class DatabaseUtilities {
 
 
                 for (Network network : networks) {
-                    if (aliasPattern.matcher(network.getNetwork_alias()).matches() && network.getNid() != REG_DEFAULT_NID
-                            && !network.getNetwork_alias().equals(REG_NETWORK_ALIAS)) {
+                    if (aliasPattern.matcher(network.getNetwork_alias()).matches() && network.getNid() != reg_default_nid
+                            && !network.getNetwork_alias().equals(reg_default_alias)) {
 
                         queryUpdateNetworkAliases.setString(1, network.getNetwork_alias());
                         queryUpdateNetworkAliases.setInt(2, network.getNid());
@@ -312,7 +321,7 @@ public class DatabaseUtilities {
 
                 for (Network network : networks) {
                     if (network.getPort() >= 1024 && network.getPort() <= 65535 && aliasPattern.matcher(network.getNetwork_alias()).matches()
-                            && network.getNid() != REG_DEFAULT_NID && !network.getNetwork_alias().equals(REG_NETWORK_ALIAS)) {
+                            && network.getNid() != reg_default_nid && !network.getNetwork_alias().equals(reg_default_alias)) {
 
                         queryUpdateNetworks.setInt(1, network.getPort());
                         queryUpdateNetworks.setString(2, network.getNetwork_alias());
@@ -419,7 +428,7 @@ public class DatabaseUtilities {
                 deleteNetworkContacts(networks);
 
                 for (Network network : networks) {
-                    if(network.getNid() == REG_DEFAULT_NID)
+                    if(network.getNid() == reg_default_nid)
                         throw new SQLException();
                     queryDeleteNetworks.setInt(1, network.getNid());
                     queryDeleteNetworks.addBatch();

@@ -15,6 +15,10 @@ import java.util.stream.Collectors;
 
 public class Main {
 
+    private static final String REG_NETWORK_ALIAS = "REGISTRATION";
+    private static final int REG_DEFAULT_PORT = 2048;
+    private static final int REG_DEFAULT_NID = 1;
+
     public static void main(String[] args) {
         boolean success = false;
         List<Network> networks = new ArrayList<>();
@@ -24,11 +28,18 @@ public class Main {
             if (args[0].equals("--help") || args[0].equals("-h")) {
                 printHelp();
                 return;
-
             }
 
               String[] credentials = getCredentials();
               DatabaseUtilities.setDatabaseUtilities(credentials[0], credentials[1]);
+              if(!DatabaseUtilities.containsRegister(REG_DEFAULT_NID, REG_NETWORK_ALIAS)){
+                  KeyPair kp = SecurityUtilities.generateKeyPair();
+                  X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), REG_NETWORK_ALIAS);
+                  String reg_fingerprint = SecurityUtilities.calculateFingerprint(regCert.getEncoded());
+                  SecurityUtilities.storePrivateKeyEntry(credentials[1], kp.getPrivate(), new X509Certificate[]{regCert}, reg_fingerprint);
+                  SecurityUtilities.storeCertificate(credentials[1], regCert, reg_fingerprint);
+                  DatabaseUtilities.initRegister(reg_fingerprint, REG_DEFAULT_PORT);
+              }
               databaseUtilities = DatabaseUtilities.getInstance();
 
             if (args[0].equals("UPDATE")) {
@@ -149,7 +160,6 @@ public class Main {
 
         } catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e) {
             // WILL HANDLE FAILED DELETE
-            System.out.println("shiz");
         }
 
     }

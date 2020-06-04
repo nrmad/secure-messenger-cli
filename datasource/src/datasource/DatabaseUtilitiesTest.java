@@ -21,10 +21,10 @@ public class DatabaseUtilitiesTest {
     public void setUp() {
         try {
             DatabaseUtilities.setDatabaseUtilities("relay-app", "relaypass");
-            if(!DatabaseUtilities.containsRegister()){
+            if(!DatabaseUtilities.containsRegister(1,"REGISTRATION")){
                 // WHERE YOU WOULD CREATE ITS KEYS
                 String fingerprint = "fakefingerprint";
-                DatabaseUtilities.initRegister(fingerprint);
+                DatabaseUtilities.initRegister(fingerprint, 2048);
             }
             databaseUtilities = DatabaseUtilities.getInstance();
         }catch(SQLException e){
@@ -48,7 +48,7 @@ public class DatabaseUtilitiesTest {
     @org.junit.Test
     public void getInstance() {
         try {
-            assertTrue(DatabaseUtilities.containsRegister());
+            assertTrue(DatabaseUtilities.containsRegister(1,"REGISTRATION"));
             assertNotNull(DatabaseUtilities.getInstance());
 
         }catch (SQLException e){}
