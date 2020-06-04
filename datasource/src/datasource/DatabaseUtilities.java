@@ -9,15 +9,19 @@ import java.util.regex.Pattern;
 public class DatabaseUtilities {
 
     private static DatabaseUtilities databaseUtilities;
-    private Connection conn;
+    private static Connection conn;
 
     private Pattern aliasPattern = Pattern.compile("\\w{1,255}");
+    private static boolean setupComplete = false;
 
     private static final String DB_NAME = "secure_messenger_relay";
     private static final String CONNECTION_STRING = "jdbc:mysql://localhost:3306/?useSSL=false";
 
     private static final String CREATE_DB = "CREATE DATABASE IF NOT EXISTS " + DB_NAME;
     private static final String USE_DB = "USE " + DB_NAME;
+    private static final String REG_NETWORK_ALIAS = "REGISTRATION";
+    private static final int REG_DEFAULT_PORT = 2048;
+    private static final int REG_DEFAULT_NID = 1;
 
     private static final String CREATE_CONTACTS = "CREATE TABLE IF NOT EXISTS contacts(cid CHAR(88) PRIMARY KEY, alias VARCHAR(255) NOT NULL)";
     private static final String CREATE_NETWORKS = "CREATE TABLE IF NOT EXISTS networks(nid INTEGER PRIMARY KEY, fingerprint CHAR(88) UNIQUE NOT NULL," +
@@ -27,6 +31,7 @@ public class DatabaseUtilities {
             "FOREIGN KEY(nid) REFERENCES networks(nid), FOREIGN KEY(cid) REFERENCES contacts(cid))";
     private static final String CREATE_CHATROOM_CONTACTS = "CREATE TABLE IF NOT EXISTS chatroomContacts( rid INTEGER, cid CHAR(88), PRIMARY KEY(rid,cid), " +
             "FOREIGN KEY(rid) REFERENCES chatrooms(rid), FOREIGN KEY(cid) REFERENCES contacts(cid))";
+    private static final String CHECK_REGISTER_EXISTS = "SELECT IF(EXISTS(SELECT * FROM networks WHERE nid = "+ REG_DEFAULT_NID +" AND network_alias = '"+REG_NETWORK_ALIAS+"'), 1, 0)";
 
     private static final String UPDATE_NETWORK_PORTS = "UPDATE networks SET port = ? WHERE nid = ?";
     private static final String UPDATE_NETWORK_ALIASES = "UPDATE networks SET network_alias = ? WHERE nid = ?";
@@ -41,19 +46,19 @@ public class DatabaseUtilities {
 
     private static final String RETRIEVE_MAX_NID = "SELECT COALESCE(MAX(nid), 0) FROM networks";
 
-    private PreparedStatement queryUpdateNetworkPorts;
-    private PreparedStatement queryUpdateNetworkAliases;
-    private PreparedStatement queryUpdateNetworks;
-    private PreparedStatement querySelectAllNetworks;
-    private PreparedStatement queryInsertNetworks;
-    private PreparedStatement querySelectNetworks;
-    private PreparedStatement queryDeleteNetworks;
-    private PreparedStatement queryDeleteNetworkContactsNid;
-    private PreparedStatement queryDeleteContacts;
+    private static PreparedStatement queryUpdateNetworkPorts;
+    private static PreparedStatement queryUpdateNetworkAliases;
+    private static PreparedStatement queryUpdateNetworks;
+    private static PreparedStatement querySelectAllNetworks;
+    private static PreparedStatement queryInsertNetworks;
+    private static PreparedStatement querySelectNetworks;
+    private static PreparedStatement queryDeleteNetworks;
+    private static PreparedStatement queryDeleteNetworkContactsNid;
+    private static PreparedStatement queryDeleteContacts;
 
-    private PreparedStatement queryRetrieveMaxNid;
+    private static PreparedStatement queryRetrieveMaxNid;
 
-    private int networkCounter;
+    private static int networkCounter;
 
     private DatabaseUtilities(String username, String password) throws SQLException {
         openConnection(username, password);
@@ -68,8 +73,11 @@ public class DatabaseUtilities {
             databaseUtilities = new DatabaseUtilities(username, password);
     }
 
-    public static DatabaseUtilities getInstance() {
-        return databaseUtilities;
+    public static DatabaseUtilities getInstance() throws SQLException{
+        if(setupComplete && databaseUtilities != null)
+            return databaseUtilities;
+        else
+            throw new SQLException();
     }
 
     private void openConnection(String username, String password) throws SQLException {
@@ -168,10 +176,50 @@ public class DatabaseUtilities {
                 conn.close();
             }
             databaseUtilities = null;
+            setupComplete = false;
 
         } catch (SQLException e) {
             System.out.println("Failed to close connection: " + e.getMessage());
         }
+    }
+
+
+    /**
+     * checks if the register network record exists at nid 1 in the database and sets the
+     * setupReady variable accordingly
+     * @return whether or not the record is set as boolean
+     * @throws SQLException
+     */
+    public static boolean containsRegister() throws SQLException{
+
+        Statement statement = conn.createStatement();
+        ResultSet resultSet = statement.executeQuery(CHECK_REGISTER_EXISTS);
+        resultSet.next();
+        if(resultSet.getInt(1) == 1){
+            setupComplete = true;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * This methods sets the register record if it is not set. This method is to be called to set it prior to any
+     * other method and to enforce this subsequent to the containsRegister method returning false. The singleton
+     * object will not be acessible till setupComplete is true
+     * @param fingerprint the fingerprint of the newly created register certificate
+     * @throws SQLException
+     */
+    public static void initRegister(String fingerprint) throws SQLException{
+
+        queryInsertNetworks.clearParameters();
+        queryInsertNetworks.setInt(1, networkCounter++);
+        queryInsertNetworks.setString(2, fingerprint);
+        queryInsertNetworks.setInt(3, REG_DEFAULT_PORT);
+        queryInsertNetworks.setString(4, REG_NETWORK_ALIAS);
+        int count = queryInsertNetworks.executeUpdate();
+        if(count == 0)
+            throw new SQLException();
+        setupComplete = true;
     }
 
     /**
@@ -226,19 +274,20 @@ public class DatabaseUtilities {
 
 
                 for (Network network : networks) {
-                    if (aliasPattern.matcher(network.getNetwork_alias()).matches()) {
+                    if (aliasPattern.matcher(network.getNetwork_alias()).matches() && network.getNid() != REG_DEFAULT_NID
+                            && !network.getNetwork_alias().equals(REG_NETWORK_ALIAS)) {
 
                         queryUpdateNetworkAliases.setString(1, network.getNetwork_alias());
                         queryUpdateNetworkAliases.setInt(2, network.getNid());
                         queryUpdateNetworkAliases.addBatch();
 
                     } else {
-                        throw new SQLException("Format incorrect");
+                        throw new SQLException();
                     }
                 }
 
                 if (Arrays.stream(queryUpdateNetworkAliases.executeBatch()).anyMatch(x -> x == 0))
-                    throw new SQLException("update failed");
+                    throw new SQLException();
                 conn.commit();
                 return true;
 
@@ -262,7 +311,8 @@ public class DatabaseUtilities {
                 queryUpdateNetworks.clearBatch();
 
                 for (Network network : networks) {
-                    if (network.getPort() >= 1024 && network.getPort() <= 65535 && aliasPattern.matcher(network.getNetwork_alias()).matches()) {
+                    if (network.getPort() >= 1024 && network.getPort() <= 65535 && aliasPattern.matcher(network.getNetwork_alias()).matches()
+                            && network.getNid() != REG_DEFAULT_NID && !network.getNetwork_alias().equals(REG_NETWORK_ALIAS)) {
 
                         queryUpdateNetworks.setInt(1, network.getPort());
                         queryUpdateNetworks.setString(2, network.getNetwork_alias());
@@ -270,12 +320,12 @@ public class DatabaseUtilities {
                         queryUpdateNetworks.addBatch();
 
                     } else {
-                        throw new SQLException("Format incorrect");
+                        throw new SQLException();
                     }
                 }
 
                 if (Arrays.stream(queryUpdateNetworks.executeBatch()).anyMatch(x -> x == 0))
-                    throw new SQLException("update failed");
+                    throw new SQLException();
                 conn.commit();
                 return true;
 
@@ -369,6 +419,8 @@ public class DatabaseUtilities {
                 deleteNetworkContacts(networks);
 
                 for (Network network : networks) {
+                    if(network.getNid() == REG_DEFAULT_NID)
+                        throw new SQLException();
                     queryDeleteNetworks.setInt(1, network.getNid());
                     queryDeleteNetworks.addBatch();
                 }
@@ -392,25 +444,27 @@ public class DatabaseUtilities {
      * @param networks the networks to delete contacts for
      * @throws SQLException
      */
-    private void deleteNetworkContacts(List<Network> networks) throws SQLException{
+    private void deleteNetworkContacts(List<Network> networks){
+        try {
+            queryDeleteNetworkContactsNid.clearBatch();
+            for (Network network : networks) {
+                queryDeleteNetworkContactsNid.setInt(1, network.getNid());
+                queryDeleteNetworkContactsNid.addBatch();
+            }
+            queryDeleteNetworkContactsNid.executeBatch();
+        }catch (SQLException e){}
+     }
 
-        queryDeleteNetworkContactsNid.clearBatch();
-        for(Network network: networks){
-            queryDeleteNetworkContactsNid.setInt(1,network.getNid());
-            queryDeleteNetworkContactsNid.addBatch();
-        }
 
-        queryDeleteNetworkContactsNid.executeBatch();
-    }
-
-    private void deleteContacts(List<Network> networks) throws SQLException{
-
-        queryDeleteContacts.clearBatch();
-        for(Network network: networks){
-            queryDeleteContacts.setInt(1, network.getNid());
-            queryDeleteContacts.addBatch();
-        }
-        queryDeleteContacts.executeBatch();
+    private void deleteContacts(List<Network> networks){
+        try {
+            queryDeleteContacts.clearBatch();
+            for (Network network : networks) {
+                queryDeleteContacts.setInt(1, network.getNid());
+                queryDeleteContacts.addBatch();
+            }
+            queryDeleteContacts.executeBatch();
+        }catch (SQLException e){}
     }
 
     // A TEMPORARY METHOD FOR TESTING PURPOSES
