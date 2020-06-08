@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 
 public class Main {
 
+    // ??? COULD MAKE CONFIGURABLE
     private static final String REG_NETWORK_ALIAS = "REGISTRATION";
     private static final int REG_DEFAULT_PORT = 2048;
     private static final int REG_DEFAULT_NID = 1;
@@ -31,15 +32,7 @@ public class Main {
             }
 
               String[] credentials = getCredentials();
-              DatabaseUtilities.setDatabaseUtilities(credentials[0], credentials[1]);
-              if(!DatabaseUtilities.containsRegister(REG_DEFAULT_NID, REG_NETWORK_ALIAS)){
-                  KeyPair kp = SecurityUtilities.generateKeyPair();
-                  X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), REG_NETWORK_ALIAS);
-                  String reg_fingerprint = SecurityUtilities.calculateFingerprint(regCert.getEncoded());
-                  SecurityUtilities.storePrivateKeyEntry(credentials[1], kp.getPrivate(), new X509Certificate[]{regCert}, reg_fingerprint);
-                  SecurityUtilities.storeCertificate(credentials[1], regCert, reg_fingerprint);
-                  DatabaseUtilities.initRegister(reg_fingerprint, REG_DEFAULT_PORT);
-              }
+              setupDatabase(credentials[0], credentials[1]);
               databaseUtilities = DatabaseUtilities.getInstance();
 
             if (args[0].equals("UPDATE")) {
@@ -211,5 +204,19 @@ public class Main {
         credentials[1] = scanner.nextLine();
 //        password = new String(con.readPassword("Enter password: "));
         return credentials;
+    }
+
+    private static void setupDatabase(String username, String password)
+            throws  SQLException, GeneralSecurityException, OperatorCreationException, IOException
+    {
+        DatabaseUtilities.setDatabaseUtilities(username, password);
+        if(!DatabaseUtilities.containsRegister(REG_DEFAULT_NID, REG_NETWORK_ALIAS)){
+            KeyPair kp = SecurityUtilities.generateKeyPair();
+            X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), REG_NETWORK_ALIAS);
+            String reg_fingerprint = SecurityUtilities.calculateFingerprint(regCert.getEncoded());
+            SecurityUtilities.storePrivateKeyEntry(password, kp.getPrivate(), new X509Certificate[]{regCert}, reg_fingerprint);
+            SecurityUtilities.storeCertificate(password, regCert, reg_fingerprint);
+            DatabaseUtilities.initRegister(reg_fingerprint, REG_DEFAULT_PORT);
+        }
     }
 }

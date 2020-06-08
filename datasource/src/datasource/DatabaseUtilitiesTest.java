@@ -82,6 +82,9 @@ public class DatabaseUtilitiesTest {
         List<Network> networks = new ArrayList<>();
         networks.add(new Network(2, 2067, "james"));
         assertFalse(databaseUtilities.updateNetworkAliases(networks));
+        networks.clear();
+        networks.add(new Network(1, 2067, "NOT_REG"));
+        assertFalse(databaseUtilities.updateNetworkAliases(networks));
 
         // CODE TO ADD NETWORKS SO UPDATES CAN BE SUCCESSFUL
 
@@ -105,6 +108,9 @@ public class DatabaseUtilitiesTest {
         List<Network> networks = new ArrayList<>();
         networks.add(new Network(2, 2000, "james"));
         assertFalse(databaseUtilities.updateNetworks(networks));
+        networks.clear();
+        networks.add(new Network(1, 2067, "NOT_REG"));
+        assertFalse(databaseUtilities.updateNetworkAliases(networks));
 
         // CODE TO ADD NETWORKS SO UPDATES CAN BE SUCCESSFUL
 
@@ -215,6 +221,9 @@ public class DatabaseUtilitiesTest {
         databaseUtilities.addNetworks(networks);
         networks1.add(new Network(4, "3",3005, "harry"));
         assertFalse(databaseUtilities.deleteNetworks(networks1));
+        networks1.clear();
+        networks1.add(new Network(1, "1", 2048, "REGISTRATION"));
+        assertTrue(databaseUtilities.deleteNetworks(networks1));
     }
 
 

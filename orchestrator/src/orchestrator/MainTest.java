@@ -2,12 +2,15 @@ package orchestrator;
 
 import datasource.DatabaseUtilities;
 import datasource.Network;
+import org.bouncycastle.operator.OperatorCreationException;
 import org.junit.After;
 import security.SecurityUtilities;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.security.KeyPair;
+import java.security.cert.X509Certificate;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -16,13 +19,21 @@ import static org.junit.Assert.*;
 
 public class MainTest {
 
+    private static final String REG_NETWORK_ALIAS = "REGISTRATION";
+    private static final int REG_DEFAULT_PORT = 2048;
+    private static final int REG_DEFAULT_NID = 1;
     private DatabaseUtilities databaseUtilities;
 
     @After
     public void tearDown() {
-
-        databaseUtilities.tempMethod();
-
+        String username = "relay-app";
+        String password = "relaypass";
+        try {
+            setupDatabase(username, password);
+            databaseUtilities = DatabaseUtilities.getInstance();
+            databaseUtilities.tempMethod();
+            databaseUtilities.closeConnection();
+        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){}
     }
 
     @org.junit.Test
@@ -40,22 +51,19 @@ public class MainTest {
         List<Network> networks;
 
         try {
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username,password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(0).getPort(), 2000);
-            assertEquals(networks.get(0).getNetwork_alias(), "tom");
-            assertEquals(networks.get(1).getPort(), 3000);
-            assertEquals(networks.get(1).getNetwork_alias(), "dick");
+            assertEquals(networks.get(1).getPort(), 2000);
+            assertEquals(networks.get(1).getNetwork_alias(), "tom");
+            assertEquals(networks.get(2).getPort(), 3000);
+            assertEquals(networks.get(2).getNetwork_alias(), "dick");
 
-            SecurityUtilities.deletePrivateKeyEntry(password ,networks.get(0).getFingerprint());
-            SecurityUtilities.deleteCertificate(password, networks.get(0).getFingerprint());
+            databaseUtilities.closeConnection();
 
-            SecurityUtilities.deletePrivateKeyEntry(password ,networks.get(1).getFingerprint());
-            SecurityUtilities.deleteCertificate(password, networks.get(1).getFingerprint());
 
-        }catch (SQLException | GeneralSecurityException | IOException e){
+        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){
             e.getMessage();
             fail();
         }
@@ -75,38 +83,42 @@ public class MainTest {
         Main.main(args);
 
         List<Network> networks;
+        String delete;
         String delete1;
         String delete2;
 
         try {
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username,password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(0).getPort(), 2000);
-            assertEquals(networks.get(0).getNetwork_alias(), "tom");
-            assertEquals(networks.get(1).getPort(), 3000);
-            assertEquals(networks.get(1).getNetwork_alias(), "dick");
+            assertEquals(networks.get(1).getPort(), 2000);
+            assertEquals(networks.get(1).getNetwork_alias(), "tom");
+            assertEquals(networks.get(2).getPort(), 3000);
+            assertEquals(networks.get(2).getNetwork_alias(), "dick");
 
-            delete1 = Integer.toString(networks.get(0).getNid());
-            delete2 = Integer.toString(networks.get(1).getNid());
+            delete = Integer.toString(1);
+            delete1 = Integer.toString(networks.get(1).getNid());
+            delete2 = Integer.toString(networks.get(2).getNid());
 
-
+            databaseUtilities.closeConnection();
 
             System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
-            args = new String[]{"DELETE", delete1+","+delete2};
+            args = new String[]{"DELETE", delete+","+delete1+","+delete2};
             Main.main(args);
 
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username,password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             try {
                 networks = databaseUtilities.getAllNetworks();
-            }catch (SQLException e){
-                assertTrue(true);
-            }
+                networks.remove(0);
+                assertTrue(networks.isEmpty());
+            }catch (SQLException e){}
 
-        }catch (SQLException e){
+            databaseUtilities.closeConnection();
+
+        }catch (SQLException | OperatorCreationException | GeneralSecurityException | IOException e){
             e.getMessage();
             fail();
         }
@@ -131,13 +143,15 @@ public class MainTest {
 
         try {
 
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username,password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            nid1 = Integer.toString(networks.get(0).getNid());
-            nid2 = Integer.toString(networks.get(1).getNid());
+            nid1 = Integer.toString(networks.get(1).getNid());
+            nid2 = Integer.toString(networks.get(2).getNid());
 
+
+            databaseUtilities.closeConnection();
 
             System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
             args = new String[]{"UPDATE", nid1+","+nid2, "TO", "2001,3001", "WITH", "tomboi,dickboi"};
@@ -145,22 +159,20 @@ public class MainTest {
 
             // check update
 
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username,password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(0).getPort(), 2001);
-            assertEquals(networks.get(0).getNetwork_alias(), "tomboi");
-            assertEquals(networks.get(1).getPort(), 3001);
-            assertEquals(networks.get(1).getNetwork_alias(), "dickboi");
+            assertEquals(networks.get(1).getPort(), 2001);
+            assertEquals(networks.get(1).getNetwork_alias(), "tomboi");
+            assertEquals(networks.get(2).getPort(), 3001);
+            assertEquals(networks.get(2).getNetwork_alias(), "dickboi");
 
-            // clean up
+            databaseUtilities.closeConnection();
 
-            System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
-            args = new String[]{"DELETE", nid1+","+nid2};
-            Main.main(args);
+            // ??? CHECK THAT UPDATES TO THE ALIAS FOR REG ARE IGNORED
 
-        }catch (SQLException e){
+        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){
             e.getMessage();
             fail();
         }
@@ -184,13 +196,14 @@ public class MainTest {
 
         try {
 
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username,password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            nid1 = Integer.toString(networks.get(0).getNid());
-            nid2 = Integer.toString(networks.get(1).getNid());
+            nid1 = Integer.toString(networks.get(1).getNid());
+            nid2 = Integer.toString(networks.get(2).getNid());
 
+            databaseUtilities.closeConnection();
 
             System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
             args = new String[]{"UPDATE", nid1+","+nid2, "TO", "2001,3001"};
@@ -198,20 +211,16 @@ public class MainTest {
 
             // check update
 
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username,password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(0).getPort(), 2001);
-            assertEquals(networks.get(1).getPort(), 3001);
+            assertEquals(networks.get(1).getPort(), 2001);
+            assertEquals(networks.get(2).getPort(), 3001);
 
-            // clean up
+            databaseUtilities.closeConnection();
 
-            System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
-            args = new String[]{"DELETE", nid1+","+nid2};
-            Main.main(args);
-
-        }catch (SQLException e){
+        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){
             e.getMessage();
             fail();
         }
@@ -235,13 +244,14 @@ public class MainTest {
 
         try {
 
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username,password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            nid1 = Integer.toString(networks.get(0).getNid());
-            nid2 = Integer.toString(networks.get(1).getNid());
+            nid1 = Integer.toString(networks.get(1).getNid());
+            nid2 = Integer.toString(networks.get(2).getNid());
 
+            databaseUtilities.closeConnection();
 
             System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
             args = new String[]{"UPDATE", nid1+","+nid2, "WITH", "tomboi,dickboi"};
@@ -249,22 +259,32 @@ public class MainTest {
 
             // check update
 
-            DatabaseUtilities.setDatabaseUtilities(username,password);
+            setupDatabase(username, password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(0).getNetwork_alias(), "tomboi");
-            assertEquals(networks.get(1).getNetwork_alias(), "dickboi");
+            assertEquals(networks.get(1).getNetwork_alias(), "tomboi");
+            assertEquals(networks.get(2).getNetwork_alias(), "dickboi");
 
-            // clean up
+            databaseUtilities.closeConnection();
 
-            System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
-            args = new String[]{"DELETE", nid1+","+nid2};
-            Main.main(args);
-
-        }catch (SQLException e){
+        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){
             e.getMessage();
             fail();
+        }
+    }
+
+    private static void setupDatabase(String username, String password)
+            throws  SQLException, GeneralSecurityException, OperatorCreationException, IOException
+    {
+        DatabaseUtilities.setDatabaseUtilities(username, password);
+        if(!DatabaseUtilities.containsRegister(REG_DEFAULT_NID, REG_NETWORK_ALIAS)){
+            KeyPair kp = SecurityUtilities.generateKeyPair();
+            X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), REG_NETWORK_ALIAS);
+            String reg_fingerprint = SecurityUtilities.calculateFingerprint(regCert.getEncoded());
+            SecurityUtilities.storePrivateKeyEntry(password, kp.getPrivate(), new X509Certificate[]{regCert}, reg_fingerprint);
+            SecurityUtilities.storeCertificate(password, regCert, reg_fingerprint);
+            DatabaseUtilities.initRegister(reg_fingerprint, REG_DEFAULT_PORT);
         }
     }
 }

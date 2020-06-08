@@ -38,8 +38,8 @@ public class SecurityUtilities {
     private static final String SIGNATURE_ALG = "SHA384with" + ASYMMETRIC_KEY_ALG;
     private static final String SECURE_RANDOM_ALG = "SHA1PRNG";
     private static final String AUTH_HASH_DIGEST_ALG = "PBKDF2WithHmacSHA512";
-    private static final File TRUSTSTORE_NAME = new File("../resources/truststore.p12");
-    private static final File KEYSTORE_NAME = new File("../resources/keystore.p12");
+    private static final File TRUSTSTORE_NAME = new File("/var/lib/secure-messenger-relay/truststore.p12");
+    private static final File KEYSTORE_NAME = new File("/var/lib/secure-messenger-relay/keystore.p12");
 
     private static final int NUM_ITERATIONS = 100000;
 

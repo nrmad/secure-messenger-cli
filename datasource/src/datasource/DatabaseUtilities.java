@@ -221,7 +221,7 @@ public class DatabaseUtilities {
     public static void initRegister(String fingerprint, int reg_default_port) throws SQLException{
 
         queryInsertNetworks.clearParameters();
-        queryInsertNetworks.setInt(1, networkCounter++);
+        queryInsertNetworks.setInt(1, databaseUtilities.reg_default_nid);
         queryInsertNetworks.setString(2, fingerprint);
         queryInsertNetworks.setInt(3, reg_default_port);
         queryInsertNetworks.setString(4, databaseUtilities.reg_default_alias);
@@ -229,6 +229,8 @@ public class DatabaseUtilities {
         if(count == 0)
             throw new SQLException();
         setupComplete = true;
+        if(networkCounter == 1)
+            networkCounter++;
     }
 
     /**
@@ -428,8 +430,6 @@ public class DatabaseUtilities {
                 deleteNetworkContacts(networks);
 
                 for (Network network : networks) {
-                    if(network.getNid() == reg_default_nid)
-                        throw new SQLException();
                     queryDeleteNetworks.setInt(1, network.getNid());
                     queryDeleteNetworks.addBatch();
                 }
