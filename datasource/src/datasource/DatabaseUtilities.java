@@ -1,5 +1,6 @@
 package datasource;
 
+import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,17 +9,18 @@ import java.util.regex.Pattern;
 
 public class DatabaseUtilities {
 
-    private static DatabaseUtilities databaseUtilities;
     private static Connection conn;
+    private static ReadPropertiesFile propertiesFile;
+    private static DatabaseUtilities databaseUtilities;
 
     private Pattern aliasPattern = Pattern.compile("\\w{1,255}");
     private static boolean setupComplete = false;
-    private int reg_default_nid;
-    private String reg_default_alias;
 
     private static final String DB_NAME = "secure_messenger_relay";
     private static final String CONNECTION_STRING = "jdbc:mysql://localhost:3306/?useSSL=false";
 
+    private static final String GET_LOCK = "SELECT GET_LOCK(?, 0)";
+    private static final String RELEASE_LOCK = "SELECT RELEASE_LOCK(?)";
     private static final String CREATE_DB = "CREATE DATABASE IF NOT EXISTS " + DB_NAME;
     private static final String USE_DB = "USE " + DB_NAME;
 
@@ -55,6 +57,8 @@ public class DatabaseUtilities {
     private static PreparedStatement queryDeleteNetworks;
     private static PreparedStatement queryDeleteNetworkContactsNid;
     private static PreparedStatement queryDeleteContacts;
+    private static PreparedStatement queryGetLock;
+    private static PreparedStatement queryReleaseLock;
 
     private static PreparedStatement queryRetrieveMaxNid;
 
@@ -63,20 +67,25 @@ public class DatabaseUtilities {
     private DatabaseUtilities(String username, String password) throws SQLException {
         openConnection(username, password);
         setupPreparedStatements();
+        getLock();
         setupCounters();
     }
 
 
     // NOT SURE WHETHER TO HANDLE EXCEPTION HERE OR NOT
-    public static void setDatabaseUtilities(String username, String password) throws SQLException {
+    public static void setDatabaseUtilities(String username, String password) throws SQLException, IOException {
         if (databaseUtilities == null)
+            propertiesFile = ReadPropertiesFile.getInstance();
             databaseUtilities = new DatabaseUtilities(username, password);
+
+
     }
 
     public static DatabaseUtilities getInstance() throws SQLException{
         if(setupComplete && databaseUtilities != null)
             return databaseUtilities;
         else
+            System.out.println("failure: cannot make changes while the relay is active");
             throw new SQLException();
     }
 
@@ -104,6 +113,8 @@ public class DatabaseUtilities {
         queryDeleteNetworks = conn.prepareStatement(DELETE_NETWORKS);
         queryDeleteNetworkContactsNid = conn.prepareStatement(DELETE_NETWORKCONTACTS_NID);
         queryDeleteContacts = conn.prepareStatement(DELETE_CONTACTS);
+        queryGetLock = conn.prepareStatement(GET_LOCK);
+        queryReleaseLock = conn.prepareStatement(RELEASE_LOCK);
 
         queryRetrieveMaxNid = conn.prepareStatement(RETRIEVE_MAX_NID);
     }
@@ -123,6 +134,23 @@ public class DatabaseUtilities {
         }
     }
 
+    private void getLock() throws SQLException{
+
+    queryGetLock.clearParameters();
+    queryGetLock.setString(1, propertiesFile.getDb_lock());
+    ResultSet resultSet = queryGetLock.executeQuery();
+    resultSet.next();
+    if(resultSet.getInt(1) == 0)
+        throw  new SQLException();
+    }
+
+    private void releaseLock() throws SQLException{
+
+       queryReleaseLock.clearParameters();
+       queryReleaseLock.setString(1, propertiesFile.getDb_lock());
+       queryReleaseLock.execute();
+    }
+
     /**
      * sets up tables which do not already exist
      */
@@ -140,6 +168,7 @@ public class DatabaseUtilities {
         statement.addBatch(CREATE_CHATROOM_CONTACTS);
 
         statement.executeBatch();
+        statement.close();
     }
 
 
@@ -149,6 +178,8 @@ public class DatabaseUtilities {
     public void closeConnection() {
 
         try {
+            releaseLock();
+
             if(queryCheckRegisterExists != null){
                 queryCheckRegisterExists.close();
             }
@@ -176,6 +207,18 @@ public class DatabaseUtilities {
             if(queryDeleteNetworkContactsNid != null){
                 queryDeleteNetworkContactsNid.close();
             }
+            if(queryRetrieveMaxNid != null){
+                queryRetrieveMaxNid.close();
+            }
+            if(queryDeleteContacts != null){
+                queryDeleteContacts.close();
+            }
+            if(queryGetLock != null){
+                queryGetLock.close();
+            }
+            if(queryReleaseLock != null){
+                queryReleaseLock.close();
+            }
             if (conn != null) {
                 conn.close();
             }
@@ -194,14 +237,11 @@ public class DatabaseUtilities {
      * @return whether or not the record is set as boolean
      * @throws SQLException
      */
-    public static boolean containsRegister(int reg_default_nid, String reg_default_alias) throws SQLException{
-
-        databaseUtilities.reg_default_nid = reg_default_nid;
-        databaseUtilities.reg_default_alias = reg_default_alias;
+    public static boolean containsRegister() throws SQLException{
 
         queryCheckRegisterExists.clearParameters();
-        queryCheckRegisterExists.setInt(1,reg_default_nid);
-        queryCheckRegisterExists.setString(2, reg_default_alias);
+        queryCheckRegisterExists.setInt(1,propertiesFile.getReg_default_nid());
+        queryCheckRegisterExists.setString(2, propertiesFile.getReg_default_alias());
         ResultSet resultSet = queryCheckRegisterExists.executeQuery();
         resultSet.next();
         if(resultSet.getInt(1) == 1){
@@ -218,13 +258,13 @@ public class DatabaseUtilities {
      * @param fingerprint the fingerprint of the newly created register certificate
      * @throws SQLException
      */
-    public static void initRegister(String fingerprint, int reg_default_port) throws SQLException{
+    public static void initRegister(String fingerprint) throws SQLException{
 
         queryInsertNetworks.clearParameters();
-        queryInsertNetworks.setInt(1, databaseUtilities.reg_default_nid);
+        queryInsertNetworks.setInt(1, propertiesFile.getReg_default_nid());
         queryInsertNetworks.setString(2, fingerprint);
-        queryInsertNetworks.setInt(3, reg_default_port);
-        queryInsertNetworks.setString(4, databaseUtilities.reg_default_alias);
+        queryInsertNetworks.setInt(3, propertiesFile.getReg_default_port());
+        queryInsertNetworks.setString(4,propertiesFile.getReg_default_alias());
         int count = queryInsertNetworks.executeUpdate();
         if(count == 0)
             throw new SQLException();
@@ -285,8 +325,7 @@ public class DatabaseUtilities {
 
 
                 for (Network network : networks) {
-                    if (aliasPattern.matcher(network.getNetwork_alias()).matches() && network.getNid() != reg_default_nid
-                            && !network.getNetwork_alias().equals(reg_default_alias)) {
+                    if (aliasPattern.matcher(network.getNetwork_alias()).matches() && network.getNid() != propertiesFile.getReg_default_nid()) {
 
                         queryUpdateNetworkAliases.setString(1, network.getNetwork_alias());
                         queryUpdateNetworkAliases.setInt(2, network.getNid());
@@ -323,7 +362,7 @@ public class DatabaseUtilities {
 
                 for (Network network : networks) {
                     if (network.getPort() >= 1024 && network.getPort() <= 65535 && aliasPattern.matcher(network.getNetwork_alias()).matches()
-                            && network.getNid() != reg_default_nid && !network.getNetwork_alias().equals(reg_default_alias)) {
+                            && network.getNid() != propertiesFile.getReg_default_nid()) {
 
                         queryUpdateNetworks.setInt(1, network.getPort());
                         queryUpdateNetworks.setString(2, network.getNetwork_alias());
@@ -411,7 +450,6 @@ public class DatabaseUtilities {
                 network.setPort(resultSet.getInt(2));
                 network.setNetwork_alias(resultSet.getString(3));
             } else {
-                // ??? WOULD AN EMPTY ARRAY NOT BE BETTER !!! DON'T THINK SO BECAUSE WE WANT DO DELETE ALL OR NONE
                 throw new SQLException();
             }
         }

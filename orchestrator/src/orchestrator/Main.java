@@ -2,6 +2,7 @@ package orchestrator;
 
 import datasource.DatabaseUtilities;
 import datasource.Network;
+import datasource.ReadPropertiesFile;
 import org.bouncycastle.operator.OperatorCreationException;
 import security.SecurityUtilities;
 
@@ -15,15 +16,13 @@ import java.util.stream.Collectors;
 
 public class Main {
 
-    // ??? COULD MAKE CONFIGURABLE
-    private static final String REG_NETWORK_ALIAS = "REGISTRATION";
-    private static final int REG_DEFAULT_PORT = 2048;
-    private static final int REG_DEFAULT_NID = 1;
+    private static boolean success = false;
+    private static List<Network> networks;
+    private static DatabaseUtilities databaseUtilities;
+    private static ReadPropertiesFile propertiesFile;
+
 
     public static void main(String[] args) {
-        boolean success = false;
-        List<Network> networks = new ArrayList<>();
-        DatabaseUtilities databaseUtilities;
 
         try {
             if (args[0].equals("--help") || args[0].equals("-h")) {
@@ -31,9 +30,11 @@ public class Main {
                 return;
             }
 
-              String[] credentials = getCredentials();
-              setupDatabase(credentials[0], credentials[1]);
-              databaseUtilities = DatabaseUtilities.getInstance();
+            networks = new ArrayList<>();
+            String[] credentials = getCredentials();
+            propertiesFile = ReadPropertiesFile.getInstance();
+            setupDatabase(credentials[0], credentials[1]);
+            databaseUtilities = DatabaseUtilities.getInstance();
 
             if (args[0].equals("UPDATE")) {
 
@@ -210,13 +211,13 @@ public class Main {
             throws  SQLException, GeneralSecurityException, OperatorCreationException, IOException
     {
         DatabaseUtilities.setDatabaseUtilities(username, password);
-        if(!DatabaseUtilities.containsRegister(REG_DEFAULT_NID, REG_NETWORK_ALIAS)){
+        if(!DatabaseUtilities.containsRegister()){
             KeyPair kp = SecurityUtilities.generateKeyPair();
-            X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), REG_NETWORK_ALIAS);
+            X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), propertiesFile.getReg_default_alias());
             String reg_fingerprint = SecurityUtilities.calculateFingerprint(regCert.getEncoded());
             SecurityUtilities.storePrivateKeyEntry(password, kp.getPrivate(), new X509Certificate[]{regCert}, reg_fingerprint);
             SecurityUtilities.storeCertificate(password, regCert, reg_fingerprint);
-            DatabaseUtilities.initRegister(reg_fingerprint, REG_DEFAULT_PORT);
+            DatabaseUtilities.initRegister(reg_fingerprint);
         }
     }
 }

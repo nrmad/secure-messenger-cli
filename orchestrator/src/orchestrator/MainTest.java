@@ -2,6 +2,7 @@ package orchestrator;
 
 import datasource.DatabaseUtilities;
 import datasource.Network;
+import datasource.ReadPropertiesFile;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.junit.After;
 import security.SecurityUtilities;
@@ -19,9 +20,6 @@ import static org.junit.Assert.*;
 
 public class MainTest {
 
-    private static final String REG_NETWORK_ALIAS = "REGISTRATION";
-    private static final int REG_DEFAULT_PORT = 2048;
-    private static final int REG_DEFAULT_NID = 1;
     private DatabaseUtilities databaseUtilities;
 
     @After
@@ -277,14 +275,15 @@ public class MainTest {
     private static void setupDatabase(String username, String password)
             throws  SQLException, GeneralSecurityException, OperatorCreationException, IOException
     {
+        ReadPropertiesFile propertiesFile = ReadPropertiesFile.getInstance();
         DatabaseUtilities.setDatabaseUtilities(username, password);
-        if(!DatabaseUtilities.containsRegister(REG_DEFAULT_NID, REG_NETWORK_ALIAS)){
+        if(!DatabaseUtilities.containsRegister()){
             KeyPair kp = SecurityUtilities.generateKeyPair();
-            X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), REG_NETWORK_ALIAS);
+            X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), propertiesFile.getReg_default_alias());
             String reg_fingerprint = SecurityUtilities.calculateFingerprint(regCert.getEncoded());
             SecurityUtilities.storePrivateKeyEntry(password, kp.getPrivate(), new X509Certificate[]{regCert}, reg_fingerprint);
             SecurityUtilities.storeCertificate(password, regCert, reg_fingerprint);
-            DatabaseUtilities.initRegister(reg_fingerprint, REG_DEFAULT_PORT);
+            DatabaseUtilities.initRegister(reg_fingerprint);
         }
     }
 }

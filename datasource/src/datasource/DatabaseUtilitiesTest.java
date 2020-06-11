@@ -5,6 +5,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 
+import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,13 +22,13 @@ public class DatabaseUtilitiesTest {
     public void setUp() {
         try {
             DatabaseUtilities.setDatabaseUtilities("relay-app", "relaypass");
-            if(!DatabaseUtilities.containsRegister(1,"REGISTRATION")){
+            if(!DatabaseUtilities.containsRegister()){
                 // WHERE YOU WOULD CREATE ITS KEYS
                 String fingerprint = "fakefingerprint";
-                DatabaseUtilities.initRegister(fingerprint, 2048);
+                DatabaseUtilities.initRegister(fingerprint);
             }
             databaseUtilities = DatabaseUtilities.getInstance();
-        }catch(SQLException e){
+        }catch(SQLException | IOException e){
             System.out.println(e.getMessage());
         }
     }
@@ -48,7 +49,7 @@ public class DatabaseUtilitiesTest {
     @org.junit.Test
     public void getInstance() {
         try {
-            assertTrue(DatabaseUtilities.containsRegister(1,"REGISTRATION"));
+            assertTrue(DatabaseUtilities.containsRegister());
             assertNotNull(DatabaseUtilities.getInstance());
 
         }catch (SQLException e){}
