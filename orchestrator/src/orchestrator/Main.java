@@ -9,6 +9,7 @@ import security.SecurityUtilities;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
+import java.security.Security;
 import java.security.cert.X509Certificate;
 import java.sql.SQLException;
 import java.util.*;
@@ -21,6 +22,7 @@ public class Main {
     private static DatabaseUtilities databaseUtilities;
     private static ReadPropertiesFile propertiesFile;
 
+// CLEAN UP AND POSSIBLY ADD FUNCTIONALITY TO CREATE NEW CERT
 
     public static void main(String[] args) {
 
@@ -33,44 +35,29 @@ public class Main {
             networks = new ArrayList<>();
             String[] credentials = getCredentials();
             propertiesFile = ReadPropertiesFile.getInstance();
-            setupDatabase(credentials[0], credentials[1]);
+            genCertificate(credentials[0]);
+            DatabaseUtilities.setDatabaseUtilities(credentials[0], credentials[1]);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             if (args[0].equals("UPDATE")) {
 
-                String[] tempNets, tempPorts, tempAliases;
+                if (args.length == 4 && args[2].equals("TO")) {
 
-                if ((args.length == 6 && args[2].equals("TO") && args[4].equals("WITH"))) {
+                    boolean isReg;
+                    int port;
+                    if (args[1].equals("R"))
+                        isReg = true;
+                    else if (args[1].equals("O"))
+                        isReg = false;
+                    else
+                        return;
 
-                    tempAliases = args[5].split(",");
-                    tempNets = args[1].split(",");
-                    tempPorts = args[3].split(",");
-
-                    for (int i = 0; i < tempNets.length; i++) {
-                        int tempNet = Integer.parseInt(tempNets[i]);
-                        int tempPort = Integer.parseInt(tempPorts[i]);
-                        String tempAlias = tempAliases[i];
-                        networks.add(new Network(tempNet, tempPort, tempAlias));
-                    }
-
-                    if (!networks.isEmpty())
-                        success = databaseUtilities.updateNetworks(networks);
-
-                } else if (args.length == 4 && args[2].equals("TO")) {
-
-                    tempNets = args[1].split(",");
-                    tempPorts = args[3].split(",");
-
-                    for (int i = 0; i < tempNets.length; i++) {
-                        int tempNet = Integer.parseInt(tempNets[i]);
-                        int tempPort = Integer.parseInt(tempPorts[i]);
-                        networks.add(new Network(tempNet, tempPort, ""));
-                    }
-
-                    if (!networks.isEmpty())
-                        success = databaseUtilities.updateNetworkPorts(networks);
+                    port = Integer.parseInt(args[3]);
+                    success = databaseUtilities.updateNetworkPorts(isReg, port);
 
                 } else if (args.length == 4 && args[2].equals("WITH")) {
+
+                    String[] tempNets, tempAliases;
 
                     tempNets = args[1].split(",");
                     tempAliases = args[3].split(",");
@@ -78,7 +65,7 @@ public class Main {
                     for (int i = 0; i < tempNets.length; i++) {
                         int tempNet = Integer.parseInt(tempNets[i]);
                         String tempAlias = tempAliases[i];
-                        networks.add(new Network(tempNet, -1, tempAlias));
+                        networks.add(new Network(tempNet, tempAlias));
                     }
                     if (!networks.isEmpty())
                         success = databaseUtilities.updateNetworkAliases(networks);
@@ -92,68 +79,38 @@ public class Main {
                 printNetworks(networks);
 
 
-            } else if (args[0].equals("ADD")) {
+            } else if (args[0].equals("ADD") && args.length == 2) {
 
-                String[] tempPorts, tempAliases;
+                String[] tempAliases;
+                tempAliases = args[1].split(",");
 
-                if (args.length == 4 && args[2].equals("WITH")) {
-
-                    tempPorts = args[1].split(",");
-                    tempAliases = args[3].split(",");
-
-                    for (int i = 0; i < tempPorts.length; i++) {
-                        int tempPort = Integer.parseInt(tempPorts[i]);
-                        String tempAlias = tempAliases[i];
-                        networks.add(new Network(tempPort, tempAlias));
-                    }
-
-                    if (!networks.isEmpty()) {
-
-                        
-
-                        for (Network network : networks) {
-                            KeyPair kp = SecurityUtilities.generateKeyPair();
-                            X509Certificate serverCertificate = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), network.getNetwork_alias());
-                            network.setFingerprint(SecurityUtilities.calculateFingerprint(serverCertificate.getEncoded()));
-
-                            SecurityUtilities.storePrivateKeyEntry(credentials[1], kp.getPrivate(), new X509Certificate[]{serverCertificate}, network.getFingerprint());
-                            SecurityUtilities.storeCertificate(credentials[1], serverCertificate, network.getFingerprint());
-                        }
-
-                        success = databaseUtilities.addNetworks(networks);
-                    }
+                for (int i = 0; i < tempAliases.length; i++) {
+                    String tempAlias = tempAliases[i];
+                    networks.add(new Network(tempAlias));
                 }
+                success = databaseUtilities.addNetworks(networks);
                 printOutcome(success, "addition successful..", "addition failed, try 'relay --help' for valid syntax");
 
-
-            } else if (args[0].equals("DELETE")) {
+            } else if (args[0].equals("DELETE") && args.length == 2) {
 
                 String[] tempNets;
-
-                if (args.length == 2) {
 
                     tempNets = args[1].split(",");
                     networks = Arrays.stream(tempNets).map(Integer::parseInt).map(Network::new).collect(Collectors.toList());
 
                     if (!networks.isEmpty()) {
-
-                        networks = databaseUtilities.getNetworks(networks);
-                        if (databaseUtilities.deleteNetworks(networks)) {
-                            for (Network network : networks) {
-                                SecurityUtilities.deleteCertificate(credentials[1], network.getFingerprint());
-                                SecurityUtilities.deletePrivateKeyEntry(credentials[1], network.getFingerprint());
-                            }
-                            success = true;
+                        databaseUtilities.deleteNetworks(networks);
+                        success = true;
                         }
-                    }
-                }
                 printOutcome(success, "deletion successful..", "deletion failed, try 'relay --help for valid syntax or relay DISPLAY for networks");
             }
+
 
             databaseUtilities.closeConnection();
 
         } catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e) {
             // WILL HANDLE FAILED DELETE
+            System.out.println(e.getMessage());
         }
 
     }
@@ -161,18 +118,17 @@ public class Main {
     private static void printHelp() {
 
         System.out.println("Usage: relay {COMMAND | --help | -h}");
-        System.out.println("              UPDATE network_list...  { TO port_list...  | WITH alias_list... | TO port_list... WITH alias_list }");
+        System.out.println("              UPDATE { network_list...  WITH alias_list... | { R | O } TO port }");
         System.out.println("                    update a comma separated list of networks to the comma separated list of\n" +
-                "                    ports with a comma separated list of aliases");
+                "                               list of aliases alternatively update R (register network) or O\n" +
+                "                               (other networks) with a new port");
         System.out.println("              DISPLAY");
         System.out.println("                    display all networks with their respective ports and aliases");
-        System.out.println("              ADD port_list... WITH alias_list...");
+        System.out.println("              ADD alias_list...");
         System.out.println("                    add with auto incremented network ids a comma separated list of their\n" +
-                "                    ports with a comma separated list of aliases");
+                "                               aliases");
         System.out.println("              DELETE network_list...");
         System.out.println("                    delete a comma separated list of networks");
-        System.out.println("              START");
-        System.out.println("                    start the relay");
     }
 
     private static void printNetworks(List<Network> networks) {
@@ -180,8 +136,8 @@ public class Main {
         System.out.println("--------------------RELAY NETWORKS--------------------");
         System.out.println("network id          TLS port            network alias");
         for (Network network : networks)
-            System.out.printf("%-20s%-20s%s\n", Integer.toString(network.getNid()), Integer.toString(network.getPort()),
-                    network.getNetwork_alias());
+            System.out.printf("%-20s%-20s%s\n", Integer.toString(network.getNid()), Integer.toString(network.getPort().getTLSPort()),
+                    network.getNetworkAlias());
         System.out.println("------------------------------------------------------");
     }
 
@@ -207,17 +163,13 @@ public class Main {
         return credentials;
     }
 
-    private static void setupDatabase(String username, String password)
-            throws  SQLException, GeneralSecurityException, OperatorCreationException, IOException
-    {
-        DatabaseUtilities.setDatabaseUtilities(username, password);
-        if(!DatabaseUtilities.containsRegister()){
+    private static void genCertificate(String password)
+            throws GeneralSecurityException, OperatorCreationException, IOException {
+        if (!SecurityUtilities.keystoreExists(password, propertiesFile.getServerCert())) {
             KeyPair kp = SecurityUtilities.generateKeyPair();
-            X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), propertiesFile.getReg_default_alias());
-            String reg_fingerprint = SecurityUtilities.calculateFingerprint(regCert.getEncoded());
-            SecurityUtilities.storePrivateKeyEntry(password, kp.getPrivate(), new X509Certificate[]{regCert}, reg_fingerprint);
-            SecurityUtilities.storeCertificate(password, regCert, reg_fingerprint);
-            DatabaseUtilities.initRegister(reg_fingerprint);
+            X509Certificate serverCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), propertiesFile.getServerCert());
+            SecurityUtilities.storePrivateKeyEntry(password, kp.getPrivate(), new X509Certificate[]{serverCert}, propertiesFile.getServerCert());
         }
     }
+
 }

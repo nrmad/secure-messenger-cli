@@ -10,6 +10,7 @@ import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.cert.jcajce.JcaX509v1CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
@@ -38,118 +39,74 @@ public class SecurityUtilities {
     private static final String SIGNATURE_ALG = "SHA384with" + ASYMMETRIC_KEY_ALG;
     private static final String SECURE_RANDOM_ALG = "SHA1PRNG";
     private static final String AUTH_HASH_DIGEST_ALG = "PBKDF2WithHmacSHA512";
-    private static final File TRUSTSTORE_NAME = new File("/var/lib/secure-messenger-relay/truststore.p12");
     private static final File KEYSTORE_NAME = new File("/var/lib/secure-messenger-relay/keystore.p12");
-
-    private static final int NUM_ITERATIONS = 100000;
 
     private static long serialNumberBase = System.currentTimeMillis();
 
-    // APPARENTLY FUNCTIONALITY TO UPDATE KS PASSWORDS IS GOOD
-
-    public static KeyStore.PrivateKeyEntry loadKeyEntry(String storePassword, String fingerprint)
-            throws GeneralSecurityException, IOException
-    {
-        KeyStore keystore = loadKeystore(storePassword);
-        KeyStore.ProtectionParameter keyPassword = new KeyStore.PasswordProtection(storePassword.toCharArray());
-        return (KeyStore.PrivateKeyEntry) keystore.getEntry(fingerprint, keyPassword);
+    static{
+        Security.addProvider(new BouncyCastleProvider());
     }
 
-    public static KeyStore loadKeystore(String storePassword)
-            throws GeneralSecurityException, IOException
+
+    public static boolean keystoreExists(String storePassword, String entry)
+        throws GeneralSecurityException,IOException
     {
         char[] password = storePassword.toCharArray();
-        return load(password, KEYSTORE_NAME);
-    }
-
-    public static KeyStore loadTruststore(String storePassword)
-            throws GeneralSecurityException, IOException
-    {
-        char[] password = storePassword.toCharArray();
-        return load(password,   TRUSTSTORE_NAME);
-    }
-
-    private static KeyStore load(char[] password, File store)
-            throws GeneralSecurityException, IOException
-    {
-        KeyStore keyStore = KeyStore.getInstance(KEYSTORE_TYPE, PROVIDER);
-        try(InputStream in = new FileInputStream(store)) {
-            keyStore.load(in , password);
+        if(KEYSTORE_NAME.exists()){
+            KeyStore keyStore = KeyStore.getInstance(KEYSTORE_TYPE, PROVIDER);
+            try(InputStream in = new FileInputStream(KEYSTORE_NAME)){
+                keyStore.load(in, password);
+                return keyStore.containsAlias(entry);
+            }
         }
-        return keyStore;
+        return false;
     }
 
+//    public static KeyStore loadKeystore(String storePassword)
+//            throws GeneralSecurityException, IOException
+//    {
+//        char[] password = storePassword.toCharArray();
+//        KeyStore keyStore = KeyStore.getInstance(KEYSTORE_TYPE, PROVIDER);
+//        try(InputStream in = new FileInputStream(KEYSTORE_NAME)) {
+//            keyStore.load(in, password);
+//        }
+//        return keyStore;
+//    }
 
-    /**
-     * Calls deleteEntry with truststore name
-     * @param storePassword the store password
-     * @param fingerprint the certificate fingerprint
-     * @throws GeneralSecurityException
-     * @throws IOException
-     */
-    public static void deleteCertificate(String storePassword, String fingerprint)
-            throws GeneralSecurityException, IOException
-    {
-        deleteEntry(storePassword, fingerprint, TRUSTSTORE_NAME);
-    }
 
-    /**
-     * Calls deleteEntry with the keystore name
-     * @param storePassword the store password
-     * @param fingerprint the certificate fingerprint
-     * @throws GeneralSecurityException
-     * @throws IOException
-     */
-    public static void deletePrivateKeyEntry(String storePassword, String fingerprint)
-            throws GeneralSecurityException, IOException
-    {
-        deleteEntry(storePassword, fingerprint, KEYSTORE_NAME);
-    }
+//    /**
+//     * Calls deleteEntry with the keystore name
+//     * @param storePassword the store password
+//     * @param certName the certificate certName
+//     * @throws GeneralSecurityException
+//     * @throws IOException
+//     */
+//    public static void deletePrivateKeyEntry(String storePassword, String certName)
+//            throws GeneralSecurityException, IOException
+//    {
+//        deleteEntry(storePassword, certName, KEYSTORE_NAME);
+//    }
+//
+//    /**
+//     * Delete the entry of the provided certName from the provided storeName
+//     * @param storePassword the store password
+//     * @param certName the network_alias
+//     * @param storeName the store name
+//     * @throws GeneralSecurityException
+//     * @throws IOException
+//     */
+//    private static void deleteEntry(String storePassword, String certName, File storeName)
+//            throws GeneralSecurityException, IOException
+//    {
+//        char[] password = storePassword.toCharArray();
+//        KeyStore store = KeyStore.getInstance(KEYSTORE_TYPE, PROVIDER);
+//        store.load(new FileInputStream(storeName), password);
+//        store.deleteEntry(certName);
+//        try(FileOutputStream os = new FileOutputStream(storeName)) {
+//            store.store(os, password);
+//        }
+//    }
 
-    /**
-     * Delete the entry of the provided fingerprint from the provided storeName
-     * @param storePassword the store password
-     * @param fingerprint the network_alias
-     * @param storeName the store name
-     * @throws GeneralSecurityException
-     * @throws IOException
-     */
-    private static void deleteEntry(String storePassword, String fingerprint, File storeName)
-            throws GeneralSecurityException, IOException
-    {
-        char[] password = storePassword.toCharArray();
-        KeyStore store = KeyStore.getInstance(KEYSTORE_TYPE, PROVIDER);
-        store.load(new FileInputStream(storeName), password);
-        store.deleteEntry(fingerprint);
-        try(FileOutputStream os = new FileOutputStream(storeName)) {
-            store.store(os, password);
-        }
-
-    }
-
-    /**
-     * Store the trusted certificate for a particular network to the truststore.p12 file
-     * @param storePassword the truststore password
-     * @param trustedCert the trusted certificate
-     * @param fingerprint the certificate fingerprint for identification
-     * @throws GeneralSecurityException
-     * @throws IOException
-     */
-    public static void storeCertificate(String storePassword, X509Certificate trustedCert, String fingerprint)
-            throws GeneralSecurityException, IOException
-    {
-        char[] password = storePassword.toCharArray();
-        KeyStore truststore = KeyStore.getInstance(KEYSTORE_TYPE, PROVIDER);
-        try {
-            truststore.load(new FileInputStream(TRUSTSTORE_NAME), password);
-        }catch (IOException e) {
-            truststore.load(null, null);
-        }
-        truststore.setCertificateEntry(fingerprint, trustedCert);
-        try(FileOutputStream os = new FileOutputStream( TRUSTSTORE_NAME)) {
-            truststore.store(os, password);
-        }
-    }
 
     /**
      * Store the private key and certificate chain for a network in the keystore.p12 file
@@ -191,17 +148,17 @@ public class SecurityUtilities {
         return keyPairGenerator.generateKeyPair();
     }
 
-    /**
-     * This method creates SHA3-512 (512 bit) digests of the input data bytes and then base64 encodes them to a fingerprint
-     * @param data The byte array representation of a public key
-     * @return the hash of those bytes
-     */
-    public static String calculateFingerprint(byte[] data)
-            throws GeneralSecurityException
-    {
-        MessageDigest hash = MessageDigest.getInstance(HASH_DIGEST_ALG, PROVIDER);
-        return Base64.getEncoder().encodeToString(hash.digest(data));
-    }
+//    /**
+//     * This method creates SHA3-512 (512 bit) digests of the input data bytes and then base64 encodes them to a fingerprint
+//     * @param data The byte array representation of a public key
+//     * @return the hash of those bytes
+//     */
+//    public static String calculateFingerprint(byte[] data)
+//            throws GeneralSecurityException
+//    {
+//        MessageDigest hash = MessageDigest.getInstance(HASH_DIGEST_ALG, PROVIDER);
+//        return Base64.getEncoder().encodeToString(hash.digest(data));
+//    }
 
     /**
      * Generate a self signed V1 X509Certificate for use by the server to authenticate and sign new users into the network

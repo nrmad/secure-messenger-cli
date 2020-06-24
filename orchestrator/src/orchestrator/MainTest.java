@@ -22,16 +22,24 @@ public class MainTest {
 
     private DatabaseUtilities databaseUtilities;
 
-    @After
-    public void tearDown() {
+
+
+    @org.junit.Test
+    public void mainDisplay(){
         String username = "relay-app";
         String password = "relaypass";
-        try {
-            setupDatabase(username, password);
-            databaseUtilities = DatabaseUtilities.getInstance();
-            databaseUtilities.tempMethod();
-            databaseUtilities.closeConnection();
-        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){}
+
+        System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
+
+        String[] args;
+        args = new String[]{"ADD", "tom,dick,harry"};
+        Main.main(args);
+
+        System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
+        System.out.println();
+        args = new String[]{"DISPLAY"};
+        Main.main(args);
+
     }
 
     @org.junit.Test
@@ -43,25 +51,24 @@ public class MainTest {
         System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
 
         String[] args;
-        args = new String[]{"ADD", "2000,3000", "WITH", "tom,dick"};
+        args = new String[]{"ADD", "tom,dick,harry"};
         Main.main(args);
 
         List<Network> networks;
 
         try {
-            setupDatabase(username,password);
+            DatabaseUtilities.setDatabaseUtilities(username, password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(1).getPort(), 2000);
-            assertEquals(networks.get(1).getNetwork_alias(), "tom");
-            assertEquals(networks.get(2).getPort(), 3000);
-            assertEquals(networks.get(2).getNetwork_alias(), "dick");
+            assertEquals(networks.get(1).getPort().getTLSPort(), 2049);
+            assertEquals(networks.get(1).getNetworkAlias(), "tom");
+            assertEquals(networks.get(2).getPort().getTLSPort(), 2049);
+            assertEquals(networks.get(2).getNetworkAlias(), "dick");
 
+            databaseUtilities.tempMethod();
             databaseUtilities.closeConnection();
-
-
-        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){
+        }catch (SQLException | IOException e){
             e.getMessage();
             fail();
         }
@@ -77,7 +84,7 @@ public class MainTest {
         System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
 
         String[] args;
-        args = new String[]{"ADD", "2000,3000", "WITH", "tom,dick"};
+        args = new String[]{"ADD", "tom,dick"};
         Main.main(args);
 
         List<Network> networks;
@@ -86,14 +93,16 @@ public class MainTest {
         String delete2;
 
         try {
-            setupDatabase(username,password);
+            DatabaseUtilities.setDatabaseUtilities(username, password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
+            databaseUtilities.insertForDelete();
+
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(1).getPort(), 2000);
-            assertEquals(networks.get(1).getNetwork_alias(), "tom");
-            assertEquals(networks.get(2).getPort(), 3000);
-            assertEquals(networks.get(2).getNetwork_alias(), "dick");
+            assertEquals(networks.get(1).getPort().getTLSPort(), 2049);
+            assertEquals(networks.get(1).getNetworkAlias(), "tom");
+            assertEquals(networks.get(2).getPort().getTLSPort(), 2049);
+            assertEquals(networks.get(2).getNetworkAlias(), "dick");
 
             delete = Integer.toString(1);
             delete1 = Integer.toString(networks.get(1).getNid());
@@ -105,72 +114,20 @@ public class MainTest {
             args = new String[]{"DELETE", delete+","+delete1+","+delete2};
             Main.main(args);
 
-            setupDatabase(username,password);
+            DatabaseUtilities.setDatabaseUtilities(username, password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             try {
                 networks = databaseUtilities.getAllNetworks();
                 networks.remove(0);
                 assertTrue(networks.isEmpty());
+
+                databaseUtilities.tempMethod();
+                databaseUtilities.closeConnection();
             }catch (SQLException e){}
 
-            databaseUtilities.closeConnection();
 
-        }catch (SQLException | OperatorCreationException | GeneralSecurityException | IOException e){
-            e.getMessage();
-            fail();
-        }
-    }
-
-
-    @org.junit.Test
-    public void mainUpdate() {
-
-        String username = "relay-app";
-        String password = "relaypass";
-
-        System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
-
-        String[] args;
-        args = new String[]{"ADD", "2000,3000", "WITH", "tom,dick"};
-        Main.main(args);
-
-        List<Network> networks;
-        String nid1;
-        String nid2;
-
-        try {
-
-            setupDatabase(username,password);
-            databaseUtilities = DatabaseUtilities.getInstance();
-
-            networks = databaseUtilities.getAllNetworks();
-            nid1 = Integer.toString(networks.get(1).getNid());
-            nid2 = Integer.toString(networks.get(2).getNid());
-
-
-            databaseUtilities.closeConnection();
-
-            System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
-            args = new String[]{"UPDATE", nid1+","+nid2, "TO", "2001,3001", "WITH", "tomboi,dickboi"};
-            Main.main(args);
-
-            // check update
-
-            setupDatabase(username,password);
-            databaseUtilities = DatabaseUtilities.getInstance();
-
-            networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(1).getPort(), 2001);
-            assertEquals(networks.get(1).getNetwork_alias(), "tomboi");
-            assertEquals(networks.get(2).getPort(), 3001);
-            assertEquals(networks.get(2).getNetwork_alias(), "dickboi");
-
-            databaseUtilities.closeConnection();
-
-            // ??? CHECK THAT UPDATES TO THE ALIAS FOR REG ARE IGNORED
-
-        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){
+        }catch (SQLException | IOException e){
             e.getMessage();
             fail();
         }
@@ -185,40 +142,35 @@ public class MainTest {
         System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
 
         String[] args;
-        args = new String[]{"ADD", "2000,3000", "WITH", "tom,dick"};
+        args = new String[]{"ADD", "tom,dick"};
         Main.main(args);
 
         List<Network> networks;
-        String nid1;
-        String nid2;
+//        String nid1;
+//        String nid2;
 
         try {
 
-            setupDatabase(username,password);
-            databaseUtilities = DatabaseUtilities.getInstance();
-
-            networks = databaseUtilities.getAllNetworks();
-            nid1 = Integer.toString(networks.get(1).getNid());
-            nid2 = Integer.toString(networks.get(2).getNid());
-
-            databaseUtilities.closeConnection();
-
             System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
-            args = new String[]{"UPDATE", nid1+","+nid2, "TO", "2001,3001"};
+            args = new String[]{"UPDATE", "R", "TO", "5001"};
             Main.main(args);
 
+            System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
+            args = new String[]{"UPDATE", "O", "TO", "5002"};
+            Main.main(args);
             // check update
 
-            setupDatabase(username,password);
+            DatabaseUtilities.setDatabaseUtilities(username, password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(1).getPort(), 2001);
-            assertEquals(networks.get(2).getPort(), 3001);
+            assertEquals(networks.get(0).getPort().getTLSPort(), 5001);
+            assertEquals(networks.get(2).getPort().getTLSPort(), 5002);
 
+            databaseUtilities.tempMethod();
             databaseUtilities.closeConnection();
 
-        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){
+        }catch (SQLException | IOException e){
             e.getMessage();
             fail();
         }
@@ -233,7 +185,7 @@ public class MainTest {
         System.setIn(new ByteArrayInputStream((username +"\r" + password).getBytes()));
 
         String[] args;
-        args = new String[]{"ADD", "2000,3000", "WITH", "tom,dick"};
+        args = new String[]{"ADD", "tom,dick"};
         Main.main(args);
 
         List<Network> networks;
@@ -241,8 +193,7 @@ public class MainTest {
         String nid2;
 
         try {
-
-            setupDatabase(username,password);
+            DatabaseUtilities.setDatabaseUtilities(username, password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
@@ -256,34 +207,21 @@ public class MainTest {
             Main.main(args);
 
             // check update
-
-            setupDatabase(username, password);
+            DatabaseUtilities.setDatabaseUtilities(username, password);
             databaseUtilities = DatabaseUtilities.getInstance();
 
             networks = databaseUtilities.getAllNetworks();
-            assertEquals(networks.get(1).getNetwork_alias(), "tomboi");
-            assertEquals(networks.get(2).getNetwork_alias(), "dickboi");
+            assertEquals(networks.get(1).getNetworkAlias(), "tomboi");
+            assertEquals(networks.get(2).getNetworkAlias(), "dickboi");
 
+            databaseUtilities.tempMethod();
             databaseUtilities.closeConnection();
-
-        }catch (SQLException | GeneralSecurityException | IOException | OperatorCreationException e){
+        }catch (SQLException  | IOException e){
             e.getMessage();
             fail();
         }
     }
 
-    private static void setupDatabase(String username, String password)
-            throws  SQLException, GeneralSecurityException, OperatorCreationException, IOException
-    {
-        ReadPropertiesFile propertiesFile = ReadPropertiesFile.getInstance();
-        DatabaseUtilities.setDatabaseUtilities(username, password);
-        if(!DatabaseUtilities.containsRegister()){
-            KeyPair kp = SecurityUtilities.generateKeyPair();
-            X509Certificate regCert = SecurityUtilities.makeV1Certificate(kp.getPrivate(), kp.getPublic(), propertiesFile.getReg_default_alias());
-            String reg_fingerprint = SecurityUtilities.calculateFingerprint(regCert.getEncoded());
-            SecurityUtilities.storePrivateKeyEntry(password, kp.getPrivate(), new X509Certificate[]{regCert}, reg_fingerprint);
-            SecurityUtilities.storeCertificate(password, regCert, reg_fingerprint);
-            DatabaseUtilities.initRegister(reg_fingerprint);
-        }
-    }
+
+
 }
